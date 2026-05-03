@@ -1,0 +1,83 @@
+// Prisma schema for INCI Lab
+// -----------------------------------------------------------------------------
+// We keep the schema small but expressive: one Ingredient table is the heart of
+// the app. Names are stored normalised (lowercased, trimmed) so lookups are
+// fast and deterministic. `aliases` lets one record match multiple INCI spellings
+// ("alcohol denat" / "denatured alcohol" / "alcohol denat.") without duplicating
+// rows.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Rating {
+  good
+  neutral
+  bad
+}
+
+enum IrritationRisk {
+  low
+  medium
+  high
+}
+
+model Ingredient {
+  id                 Int            @id @default(autoincrement())
+  // Canonical, lowercased name used as the primary lookup key.
+  name               String         @unique
+  // Human-readable display name (preserves casing, e.g. "Sodium PCA").
+  displayName        String
+  // Alternative spellings or trade names that should resolve to this record.
+  aliases            String[]       @default([])
+
+  rating             Rating
+  description        String         @db.Text
+  // Bullet-style strings: ["Hydrates the stratum corneum", "Reinforces barrier"]
+  effects            Json           @default("[]")
+  comedogenicRating  Int            @default(0) // 0–5, NIH-style scale
+  irritationRisk     IrritationRisk @default(low)
+  // Free-form tags: hydrating, occlusive, fragrance, alcohol, paraben, etc.
+  tags               String[]       @default([])
+
+  // Per skin-type suitability score: -2 (avoid) … +2 (great). Optional fields.
+  oilyScore          Int            @default(0)
+  dryScore           Int            @default(0)
+  sensitiveScore     Int            @default(0)
+  acneProneScore     Int            @default(0)
+
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([rating])
+}
+
+// --- Optional: user accounts & history (the "bonus" features) -----------------
+// Kept minimal; wire up NextAuth or Clerk in app-land if you want real auth.
+
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  name      String?
+  scans     Scan[]
+  createdAt DateTime   @default(now())
+}
+
+model Scan {
+  id           String   @id @default(cuid())
+  user         User?    @relation(fields: [userId], references: [id])
+  userId       String?
+  productLabel String?  // user-given name, e.g. "CeraVe Moisturizer"
+  rawInput     String   @db.Text
+  score        Int
+  // Snapshot of the analysis result so history is stable even if the DB shifts.
+  result       Json
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
