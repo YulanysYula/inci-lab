@@ -44,6 +44,7 @@ export async function POST(req: Request) {
         has_parabens: result.flags.parabens,
       },
     });
+    await posthog.flush();
 
     return NextResponse.json(result);
   } catch (err) {
@@ -57,6 +58,7 @@ export async function POST(req: Request) {
         error_message: err instanceof Error ? err.message : String(err),
       },
     });
+    await posthog.flush();
 
     return NextResponse.json(
       { error: "Analysis failed. Please try again." },
