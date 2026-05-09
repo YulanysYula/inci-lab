@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import posthog from "posthog-js";
 import { ScoreGauge } from "./components/ScoreGauge";
 import { IngredientCard } from "./components/IngredientCard";
 import { SkinTypeFilter } from "./components/SkinTypeFilter";
@@ -25,6 +26,9 @@ export default function HomePage() {
     if (!input.trim()) return;
     setBusy(true);
     setError(null);
+    posthog.capture("ingredient_analysis_submitted", {
+      ingredient_count_estimate: input.split(",").length,
+    });
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
@@ -35,12 +39,25 @@ export default function HomePage() {
       if (!res.ok) throw new Error(data?.error || "Something went wrong.");
       setResult(data);
       setFilter("all");
+      posthog.capture("ingredient_analysis_completed", {
+        ingredient_count: data.ingredients?.length ?? 0,
+        score: data.score,
+        verdict: data.verdict,
+        good_count: data.summary?.good ?? 0,
+        neutral_count: data.summary?.neutral ?? 0,
+        bad_count: data.summary?.bad ?? 0,
+        has_fragrance: data.flags?.fragrance ?? false,
+        has_parabens: data.flags?.parabens ?? false,
+      });
       // Smooth scroll to results.
       setTimeout(() => {
         document.getElementById("results")?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 50);
     } catch (e: any) {
-      setError(e?.message || "Analysis failed.");
+      const message = e?.message || "Analysis failed.";
+      setError(message);
+      posthog.capture("ingredient_analysis_failed", { error_message: message });
+      posthog.captureException(e);
     } finally {
       setBusy(false);
     }
@@ -99,7 +116,10 @@ export default function HomePage() {
               Paste ingredients
             </label>
             <button
-              onClick={() => setInput(SAMPLE)}
+              onClick={() => {
+                setInput(SAMPLE);
+                posthog.capture("sample_loaded");
+              }}
               className="eyebrow hover:text-ink"
               type="button"
             >
@@ -153,7 +173,14 @@ export default function HomePage() {
               <CompositionBar summary={result.summary} total={result.ingredients.length} />
 
               <div className="mt-6 mb-3 eyebrow">Filter by your skin</div>
-              <SkinTypeFilter value={skin} onChange={setSkin} scores={result.skinTypeScores} />
+              <SkinTypeFilter
+                value={skin}
+                onChange={(value) => {
+                  setSkin(value);
+                  posthog.capture("skin_type_filter_changed", { skin_type: value });
+                }}
+                scores={result.skinTypeScores}
+              />
 
               <div className="mt-6 mb-3 eyebrow">Quick flags</div>
               <FlagBar flags={result.flags} />
@@ -170,7 +197,10 @@ export default function HomePage() {
             {(["all", "good", "neutral", "bad"] as Filter[]).map((f) => (
               <button
                 key={f}
-                onClick={() => setFilter(f)}
+                onClick={() => {
+                  setFilter(f);
+                  posthog.capture("ingredient_filter_changed", { filter: f });
+                }}
                 className="pill"
                 style={
                   filter === f

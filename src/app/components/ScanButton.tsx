@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import posthog from "posthog-js";
 
 interface Props {
   onText: (text: string) => void;
@@ -32,9 +33,14 @@ export function ScanButton({ onText }: Props) {
           }
         },
       });
+      posthog.capture("label_scan_completed", {
+        text_length: data.text.length,
+      });
       onText(data.text);
     } catch (err) {
       console.error(err);
+      posthog.capture("label_scan_failed");
+      posthog.captureException(err);
       setError("Couldn't read the image. Try a sharper photo with good lighting.");
     } finally {
       setBusy(false);
